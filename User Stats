@@ -1,0 +1,115 @@
+with lzr_ep as
+(select
+    ep.contract_address,
+    ep.call_tx_hash,
+    110 as _srcChainId,
+    ep._dstChainId,
+    t."from" as user_address
+from layerzero_arbitrum.Endpoint_call_send ep
+inner join arbitrum.transactions t
+    on ep.call_tx_hash = t.hash
+    and ep.call_success
+union all
+select
+    ep.contract_address,
+    ep.call_tx_hash,
+    101 as _srcChainId,
+    ep._dstChainId,
+    t."from" as user_address
+from layerzero_ethereum.Endpoint_call_send ep
+inner join ethereum.transactions t
+    on ep.call_tx_hash = t.hash
+    and ep.call_success
+union all 
+select
+    ep.contract_address,
+    ep.call_tx_hash,
+    102 as _srcChainId,
+    ep._dstChainId,
+    t."from" as user_address
+from layerzero_bnb.Endpoint_call_send ep
+inner join bnb.transactions t
+    on ep.call_tx_hash = t.hash
+    and ep.call_success
+union all 
+select
+    ep.contract_address,
+    ep.call_tx_hash,
+    106 as _srcChainId,
+    ep._dstChainId,
+    t."from" as user_address
+from layerzero_avalanche_c.Endpoint_call_send ep
+inner join avalanche_c.transactions t
+    on ep.call_tx_hash = t.hash
+    and ep.call_success
+union all
+select
+    ep.contract_address,
+    ep.call_tx_hash,
+    111 as _srcChainId,
+    ep._dstChainId,
+    t."from" as user_address
+from layerzero_optimism.Endpoint_call_send ep
+inner join optimism.transactions t
+    on ep.call_tx_hash = t.hash
+    and ep.call_success
+union all
+select
+    ep.contract_address,
+    ep.call_tx_hash,
+    109 as _srcChainId,
+    ep._dstChainId,
+    t."from" as user_address
+from layerzero_polygon.Endpoint_call_send ep
+inner join polygon.transactions t
+    on ep.call_tx_hash = t.hash
+    and ep.call_success
+union all
+select
+    ep.contract_address,
+    ep.call_tx_hash,
+    112 as _srcChainId,
+    ep._dstChainId,
+    t."from" as user_address
+from layerzero_fantom_endpoint_fantom.Endpoint_call_send ep
+inner join fantom.transactions t
+    on ep.call_tx_hash = t.hash
+    and ep.call_success
+),
+
+chain_id as
+(select 101 as chain_id, 'ethereum' as chain union all
+select 102 as chain_id, 'bnb' as chain union all
+select 106 as chain_id, 'avalanche_c' as chain union all
+select 109 as chain_id, 'polygon' as chain union all
+select 110 as chain_id, 'arbitrum' as chain union all
+select 111 as chain_id, 'optimism' as chain union all
+select 112 as chain_id, 'fantom' as chain),
+
+user_stats as 
+(select
+    user_address,
+    no_tx,
+    double_check_record,
+    avg(no_tx) over() as avg_tx,
+    row_number() over(order by no_tx desc) as ranked
+from
+(select 
+    user_address,
+    count(distinct call_tx_hash) as no_tx,
+    count(call_tx_hash) as double_check_record
+from lzr_ep
+group by 1)
+)
+select
+    u.no_tx,
+    u.ranked,
+    avg_tx.avg_tx,
+    total_user.total,
+    case when u.ranked*100/total_user.total <= 0.01 then 0.01
+    else  u.ranked*100/total_user.total end as top
+from
+(select no_tx, ranked from user_stats where user_address = {{address}}) u, 
+(select distinct avg_tx from user_stats) avg_tx,
+(select count(user_address) as total from user_stats) total_user
+
